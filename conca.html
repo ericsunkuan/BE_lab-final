@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Concentration Analyzer</title>
+  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+  <style>
+    #webgazerVideoContainer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 320px;
+      height: 240px;
+      z-index: 9999;
+    }
+    
+    #buttonContainer {
+      margin-top: 260px;
+    }
+
+    #centralBox {
+      position: absolute;
+      top: 30%;
+      left: 30%;
+      width: 40%;
+      height: 40%;
+      border: 2px dashed red;
+      box-sizing: border-box;
+      z-index: 9998;
+    }
+  </style>
+</head>
+<body>
+  <h1>Concentration Analyzer</h1>
+  <div id="buttonContainer">
+    <button onclick="startTracking()">Start Tracking</button>
+    <button onclick="stopTracking()">Stop Tracking</button>
+    <button onclick="calibrateWebGazer()">Recalibrate</button>
+  </div>
+  <div id="concentrationScore"></div>
+  <div id="centralBox"></div>
+
+  <script>
+    let gazeData = [];
+    let isTracking = false;
+    let screenWidth = window.innerWidth;
+    let screenHeight = window.innerHeight;
+
+    function startTracking() {
+      if (!isTracking) {
+        webgazer.setRegression('ridge')
+          .setTracker('clmtrackr')
+          .setGazeListener(function(data, elapsedTime) {
+            if (data) {
+              gazeData.push(data);
+            }
+          })
+          .begin()
+          .showPredictionPoints(true); // Show prediction points when tracking starts
+        isTracking = true;
+      }
+    }
+
+    function stopTracking() {
+      if (isTracking) {
+        webgazer.pause(); // Pause WebGazer instead of ending it
+        isTracking = false;
+        analyzeConcentration();
+      }
+    }
+
+    function calibrateWebGazer() {
+      webgazer.clearData();
+      webgazer.showPredictionPoints(true);
+      webgazer.resume(); // Resume WebGazer instead of pausing and resuming
+
+      // Add calibration points
+      const numPoints = 5;
+      const points = [];
+      for (let i = 0; i < numPoints; i++) {
+        points.push({ x: Math.random() * window.innerWidth, y: Math.random() * window.innerHeight });
+      }
+
+      const calibrationPromise = new Promise((resolve) => {
+        let currentPoint = 0;
+        const nextPoint = () => {
+          if (currentPoint < points.length) {
+            const point = points[currentPoint];
+            webgazer.watchListener(point.x, point.y);
+            currentPoint++;
+            setTimeout(nextPoint, 1000);
+          } else {
+            resolve();
+          }
+        };
+        nextPoint();
+      });
+
+      calibrationPromise.then(() => {
+        webgazer.showPredictionPoints(true); // Ensure prediction points are shown after calibration
+      });
+    }
+
+    function isInsideCentralBox(x, y) {
+      const boxLeft = screenWidth * 0.3;
+      const boxRight = screenWidth * 0.7;
+      const boxTop = screenHeight * 0.3;
+      const boxBottom = screenHeight * 0.7;
+
+      return x >= boxLeft && x <= boxRight && y >= boxTop && y <= boxBottom;
+    }
+
+    function analyzeConcentration() {
+      console.log('Gaze Data:', gazeData);
+
+      if (gazeData.length > 0) {
+        const fixationThreshold = 100; // Minimum fixation duration in milliseconds
+        const fixationRadius = 50; // Maximum distance between gaze points to be considered a fixation
+        const fixations = [];
+
+        let i = 0;
+        while (i < gazeData.length) {
+          const fixationStart = i;
+          let fixationEnd = i;
+
+          while (fixationEnd + 1 < gazeData.length &&
+            Math.sqrt(
+              Math.pow(gazeData[fixationEnd + 1].x - gazeData[fixationStart].x, 2) +
+              Math.pow(gazeData[fixationEnd + 1].y - gazeData[fixationStart].y, 2)
+            ) < fixationRadius) {
+            fixationEnd++;
+          }
+
+          const fixationDuration = gazeData[fixationEnd].timestamp - gazeData[fixationStart].timestamp;
+          if (fixationDuration >= fixationThreshold) {
+            const fixation = {
+              duration: fixationDuration,
+              x: gazeData[fixationStart].x,
+              y: gazeData[fixationStart].y,
+              insideCentralBox: isInsideCentralBox(gazeData[fixationStart].x, gazeData[fixationStart].y)
+            };
+            fixations.push(fixation);
+          }
+
+          i = fixationEnd + 1;
+        }
+
+        console.log('Fixations:', fixations);
+
+        if (fixations.length > 0) {
+          const centralFixations = fixations.filter(fixation => fixation.insideCentralBox);
+          const centralFixationDuration = centralFixations.reduce((sum, fixation) => sum + fixation.duration, 0);
+          const totalFixationDuration = fixations.reduce((sum, fixation) => sum + fixation.duration, 0);
+
+          const concentrationScore = centralFixationDuration / totalFixationDuration;
+
+          console.log('Central Fixation Duration:', centralFixationDuration);
+          console.log('Total Fixation Duration:', totalFixationDuration);
+          console.log('Concentration Score:', concentrationScore);
+
+          document.getElementById('concentrationScore').textContent = `Concentration Score: ${concentrationScore.toFixed(2)}`;
+        } else {
+          document.getElementById('concentrationScore').textContent = 'No fixations detected.';
+        }
+      } else {
+        document.getElementById('concentrationScore').textContent = 'No gaze data available.';
+      }
+
+      // Clear gaze data for the next tracking session
+      gazeData = [];
+    }
+  </script>
+</body>
+</html>
