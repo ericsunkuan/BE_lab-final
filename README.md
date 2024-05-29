@@ -1,7 +1,7 @@
 # BE_lab-final
 Final Project for BE lab 112-2
 
-#Acknowledgements 
+## Acknowledgements 
 
 Webgazer : https://github.com/brownhci/WebGazer 
 
